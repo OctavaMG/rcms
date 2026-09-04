@@ -1,0 +1,38 @@
+# AgentSpecd Contracts — RCMS (Django, internal stack)
+
+Adapted from the AgentSpecd `init-django.sh` template
+(RCMS-Research parallel effort) to match what this project actually
+uses. One deliberate deviation flagged below — everything else follows
+the template as written.
+
+## Dual documents
+- Read `DESIGN.md` and `DATA-MODEL.md` before generating or modifying features.
+- DESIGN.md is authoritative for product intent, surfaces, and non-goals.
+- DATA-MODEL.md is authoritative for entities, fields, relationships, and data rules.
+- If a request conflicts with either file, flag the conflict instead of silently overriding it.
+- If a change in chat is not yet reflected in the relevant contract file, update that file in the same change.
+- Never invent models, fields, endpoints, or admin screens that are not listed in the contracts.
+- Every field's Kind (authority / join / pointer / cache) is declared in DATA-MODEL.md.
+
+## Domain / adapter / api boundary (non-negotiable)
+- Business rules live in `domain/`. No Django imports there — pure Python, unit-testable without a database (see `domain/tests.py`, which uses plain `unittest`, not Django's test client).
+- `core/` holds models, admin, and migrations only — the Django ORM/persistence layer. It has no business rules of its own.
+- `api/` holds DRF serializers, views, and routers. It validates at the trust boundary and orchestrates; it calls into `domain/` for the actual rules and does not reimplement them.
+- External systems (object storage, workflow engines, third-party APIs) are reached through `adapters/`, behind an interface `domain/` defines.
+- Do not call a vendor SDK directly from a view, a serializer, a model method, or an admin action.
+- Validation at trust boundaries is explicit: DRF serializers for API input, forms or `clean()` for admin input. Type hints are not validation.
+
+## Stack constraints
+- Django 5.2 only (`django>=5.2,<5.3` — ADR-11). Not Django 6.x.
+- **Deviation from the AgentSpecd template:** dependencies are managed via `pip` + `requirements.txt` inside a virtualenv, not `uv`. This was a deliberate choice made when this contract file was retrofitted onto an already-built project, to avoid a mid-build toolchain swap — not a rejection of `uv` on principle. Revisit if Octava standardizes on `uv` across Track B services.
+- Staff UI is Django Admin. Do not build a staff SPA.
+- API is DRF with token authentication. Write endpoints are allow-listed (see `domain.job_rules.PATCH_ALLOWED_FIELDS`), not open PATCH.
+- State-changing PATCH requests are validated against the documented state machine (`domain.job_rules.is_valid_transition`) — do not accept a state value without checking whether the transition is legal.
+- PostgreSQL via Docker Compose in production/staging. SQLite is permitted only for quick local `manage.py check`/test runs (set `DB_ENGINE=sqlite3`), never for anything touching real data.
+- No Celery, no RabbitMQ. If work must be deferred, say so and stop.
+- Do not add new frameworks or infrastructure simply because they are popular.
+- Ask "What complexity does this remove?" before introducing any dependency.
+
+## Git discipline
+- Generate code and stop. Do not stage, commit, or push automatically — the human reviews and commits.
+- Migrations are reviewed like code. Do not run `makemigrations` and commit in the same breath.
