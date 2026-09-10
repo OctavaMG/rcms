@@ -1,0 +1,51 @@
+# Run from rcms/deploy/dmp/ on M80q002:
+#   docker compose -f docker-compose.dmp.yml --env-file .env.dmp up -d --build
+#
+# Build context is the DMP submodule two levels up (rcms/django-music-publisher),
+# NOT this directory -- this directory only holds deploy config, per the
+# "no scaffolding inside DMP's own repo" decision (ADR-11: vendored
+# engine, kept a clean diffable copy of upstream).
+
+services:
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Console
+
+  dmp:
+    build:
+      context: ../../django-music-publisher
+      dockerfile: ../deploy/dmp/Dockerfile
+      args:
+        DMP_COMMIT: 4fdec3d1afbc4deef2507f804e31b25cfcf9dbf8
+    restart: unless-stopped
+    depends_on:
+      - minio
+    environment:
+      SECRET_KEY: ${DMP_SECRET_KEY}
+      DEBUG: "False"
+      ALLOWED_HOSTS: "192.168.0.82,dmp.lab.octava.internal"
+      DATABASE_URL: ${DMP_DATABASE_URL}
+      # S3-compatible storage -> MinIO on this same host. DMP already
+      # ships django-storages + boto3 and reads all of this from env
+      # vars -- no code changes needed vs. its default DigitalOcean
+      # Spaces target.
+      AWS_S3_ENDPOINT_URL: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD}
+      AWS_STORAGE_BUCKET_NAME: "rcms"
+      AWS_S3_REGION_NAME: "us-east-1"
+      OPTION_FILES: "True"
+    ports:
+      - "8001:8001"
+
+volumes:
+  minio_data:
