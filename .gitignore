@@ -6,3 +6,4 @@ venv/
 *.egg-info/
 .DS_Store
 cookies.txt
+deploy/dmp/.env.dmp
