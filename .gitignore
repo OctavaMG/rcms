@@ -5,3 +5,4 @@ db.sqlite3
 venv/
 *.egg-info/
 .DS_Store
+cookies.txt
