@@ -31,7 +31,7 @@ services:
       - minio
     environment:
       SECRET_KEY: ${DMP_SECRET_KEY}
-      DEBUG: "False"
+      DEBUG: "True"
       ALLOWED_HOSTS: "192.168.0.82,dmp.lab.octava.internal"
       DATABASE_URL: ${DMP_DATABASE_URL}
       # S3-compatible storage -> MinIO on this same host. DMP already
