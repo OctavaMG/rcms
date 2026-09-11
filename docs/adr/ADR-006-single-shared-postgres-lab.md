@@ -1,5 +1,5 @@
 ---
-id: ADR-005
+id: ADR-006
 registry: rcms
 title: Single shared Postgres instance for the lab (DMP + RCMS)
 status: accepted
@@ -21,7 +21,7 @@ amendments:
       authoritative version.
 ---
 
-# ADR-005: Single shared Postgres instance for the lab (DMP + RCMS)
+# ADR-006: Single shared Postgres instance for the lab (DMP + RCMS)
 
 ## Context
 
