@@ -12,7 +12,12 @@ in domain/, not in this file.
 
 from rest_framework import serializers
 
-from domain.job_rules import PATCH_ALLOWED_FIELDS, compute_idempotency_key, is_valid_transition
+from domain.job_rules import (
+    PATCH_ALLOWED_FIELDS,
+    WORKCASE_CACHE_FIELDS_PATCHABLE_VIA_JOB,
+    compute_idempotency_key,
+    is_valid_transition,
+)
 
 from core.models import Job
 
@@ -91,11 +96,24 @@ class JobPatchSerializer(serializers.ModelSerializer):
     original slice, which accepted any state value without checking
     whether the transition made sense (e.g. queued -> succeeded,
     skipping running entirely, was previously accepted silently).
+
+    Also accepts named write-only fields for the WorkCase-side of the
+    allow-list (spec 5.3: n8n may write cached case flags on the Job's
+    linked WorkCase, not just Job's own fields) -- currently just
+    `work_case_cwr_registered`. This was documented in the spec from
+    the start but missing from the original implementation; found by
+    comparing against a parallel implementation that included it
+    correctly. Adding another patchable WorkCase field means adding it
+    to BOTH `domain.WORKCASE_CACHE_FIELDS_PATCHABLE_VIA_JOB` and a
+    matching write-only field here -- the domain constant alone isn't
+    enough to make a field reachable through this endpoint.
     """
+
+    work_case_cwr_registered = serializers.BooleanField(write_only=True, required=False)
 
     class Meta:
         model = Job
-        fields = list(PATCH_ALLOWED_FIELDS)
+        fields = list(PATCH_ALLOWED_FIELDS) + ["work_case_cwr_registered"]
 
     def validate(self, attrs):
         new_state = attrs.get("state")
@@ -109,4 +127,29 @@ class JobPatchSerializer(serializers.ModelSerializer):
                         )
                     }
                 )
+
+        if "work_case_cwr_registered" in attrs:
+            if self.instance is None or self.instance.work_case_id is None:
+                raise serializers.ValidationError(
+                    {
+                        "work_case_cwr_registered": (
+                            "This Job has no linked WorkCase -- nothing to update."
+                        )
+                    }
+                )
+
         return attrs
+
+    def update(self, instance, validated_data):
+        # WorkCase.cwr_registered is not a Job field -- pop it before
+        # the normal ModelSerializer update handles Job's own fields,
+        # then cascade it to the linked WorkCase separately.
+        work_case_cwr_registered = validated_data.pop("work_case_cwr_registered", None)
+        instance = super().update(instance, validated_data)
+
+        if work_case_cwr_registered is not None:
+            work_case = instance.work_case
+            work_case.cwr_registered = work_case_cwr_registered
+            work_case.save(update_fields=["cwr_registered", "updated_at"])
+
+        return instance

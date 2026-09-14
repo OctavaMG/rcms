@@ -92,3 +92,21 @@ def compute_idempotency_key(
     existing row instead of creating a duplicate (spec Section 5.4).
     """
     return ":".join([str(company_id), job_type, destination, industry_id or ""])
+
+
+WORKCASE_CACHE_FIELDS_PATCHABLE_VIA_JOB: frozenset[str] = frozenset({"cwr_registered"})
+"""
+Spec Section 5.3: n8n may also write named cache-Kind flags on the
+Job's linked WorkCase through the same PATCH call -- not just Job's
+own fields (PATCH_ALLOWED_FIELDS above is the Job-side half of the
+allow-list; this is the WorkCase-side half). This was documented in
+the spec from the start but not actually implemented until this
+revision -- a real gap found by comparing against a parallel
+implementation's design.md, which included it correctly from the
+start.
+
+Only cache-Kind fields belong here (see DATA-MODEL.md /
+rcms/docs/adr/ADR-003 for the Kind taxonomy). WorkCase.split_status is
+authority, not cache, and must never be added to this set -- that's
+the exact field this whole allow-list mechanism exists to protect.
+"""
