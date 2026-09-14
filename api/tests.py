@@ -12,7 +12,7 @@ from django.urls import reverse
 from rest_framework.test import APITestCase
 from rest_framework.authtoken.models import Token
 
-from core.models import Company, Job
+from core.models import Company, Job, WorkCase
 
 
 class JobContractTests(APITestCase):
@@ -117,6 +117,85 @@ class JobContractTests(APITestCase):
         self.assertEqual(response.status_code, 200)
         job.refresh_from_db()
         self.assertEqual(job.state, Job.State.RUNNING)
+
+
+    def test_patch_can_update_linked_workcase_cache_flag(self):
+        """
+        Spec 5.3: n8n may also flip a cached case flag on the Job's
+        linked WorkCase (e.g. cwr_registered) through the same PATCH
+        call -- this is the gap found by comparing against a parallel
+        implementation and fixed in this revision.
+        """
+        work_case = WorkCase.objects.create(
+            company=self.company, title="Test Song", cwr_registered=False,
+        )
+        job = Job.objects.create(
+            company=self.company,
+            job_type=Job.JobType.CWR_MUSICMARK,
+            destination="musicmark",
+            idempotency_key="test-key-004",
+            state=Job.State.RUNNING,
+            work_case=work_case,
+        )
+        url = reverse("job-detail", args=[job.id])
+        response = self.client.patch(
+            url,
+            {"state": Job.State.SUCCEEDED, "work_case_cwr_registered": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        job.refresh_from_db()
+        work_case.refresh_from_db()
+        self.assertEqual(job.state, Job.State.SUCCEEDED)
+        self.assertTrue(work_case.cwr_registered)
+
+    def test_patch_workcase_cache_flag_rejected_without_linked_workcase(self):
+        """A Job with no work_case has nothing to cascade the flag to -- 400, not a silent no-op."""
+        job = Job.objects.create(
+            company=self.company,
+            job_type=Job.JobType.CWR_MUSICMARK,
+            destination="musicmark",
+            idempotency_key="test-key-005",
+            state=Job.State.RUNNING,
+        )
+        url = reverse("job-detail", args=[job.id])
+        response = self.client.patch(
+            url, {"work_case_cwr_registered": True}, format="json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_split_status_remains_unreachable_even_via_workcase_cascade(self):
+        """
+        The cache-flag cascade only ever exposes cwr_registered
+        (cache-Kind). split_status (authority-Kind) stays completely
+        unreachable through this endpoint, same as before -- this is
+        the whole point of only whitelisting cache fields.
+        """
+        work_case = WorkCase.objects.create(
+            company=self.company, title="Test Song",
+            split_status=WorkCase.SplitStatus.DRAFT,
+        )
+        job = Job.objects.create(
+            company=self.company,
+            job_type=Job.JobType.CWR_MUSICMARK,
+            destination="musicmark",
+            idempotency_key="test-key-006",
+            state=Job.State.RUNNING,
+            work_case=work_case,
+        )
+        url = reverse("job-detail", args=[job.id])
+        # split_status isn't a serializer field at all -- DRF silently
+        # ignores it rather than erroring, same as any other
+        # unrecognized key.
+        response = self.client.patch(
+            url,
+            {"state": Job.State.SUCCEEDED, "split_status": "registered"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        work_case.refresh_from_db()
+        self.assertEqual(work_case.split_status, WorkCase.SplitStatus.DRAFT)
 
     def test_unauthenticated_requests_are_rejected(self):
         self.client.credentials()
