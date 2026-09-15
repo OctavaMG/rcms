@@ -32,7 +32,7 @@ services:
     environment:
       SECRET_KEY: ${DMP_SECRET_KEY}
       DEBUG: "True"
-      ALLOWED_HOSTS: "192.168.0.82,dmp.lab.octava.internal"
+      ALLOWED_HOSTS: "192.168.0.82,dmp.octava.lab"
       DATABASE_URL: ${DMP_DATABASE_URL}
       # S3-compatible storage -> MinIO on this same host. DMP already
       # ships django-storages + boto3 and reads all of this from env
