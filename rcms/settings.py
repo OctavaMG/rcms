@@ -36,6 +36,23 @@ ALLOWED_HOSTS = [
     if h.strip()
 ]
 
+# Behind Caddy, TLS terminates at the proxy. Without this Django sees a
+# plain-HTTP request, builds http:// origins from the Host header, and
+# rejects the browser's https:// Origin on every POST -- CSRF 403 on
+# admin login. Only safe because the proxy is the intended path in; a
+# client reaching :8000 directly on the LAN could spoof the header.
+if env_bool("DJANGO_TRUST_PROXY_TLS", default=False):
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# Explicit trusted origins, scheme included. Belt-and-braces alongside
+# the above, and required if a hostname ever fronts this that is not the
+# one in the Host header.
+CSRF_TRUSTED_ORIGINS = [
+    o.strip()
+    for o in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",")
+    if o.strip()
+]
+
 
 # --- Applications -------------------------------------------------------
 
